@@ -411,6 +411,15 @@
             margin-bottom: 30px;
         }
 
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            max-width: 300px;
+            margin: 0 auto;
+        }
+
         .start-button {
             background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
@@ -422,12 +431,33 @@
             transition: all 0.3s;
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 10px;
         }
 
         .start-button:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .ai-chat-button {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .ai-chat-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
         }
 
         .waiting-screen {
@@ -613,10 +643,16 @@
                 </lord-icon>
                 <h1>AnonChat</h1>
                 <p>Chat anonim dengan 100% chat terenkripsi dan AI Assistant.<br>Pesan akan terhapus otomatis setelah 30 menit</p>
-                <button class="start-button" onclick="startChat()" style="margin: 0 auto;">
-                    <i class="fas fa-comments"></i>
-                    Mulai Chat
-                </button>
+                <div class="button-container">
+                    <button class="start-button" onclick="startChat()">
+                        <i class="fas fa-comments"></i>
+                        Mulai Chat
+                    </button>
+                    <button class="ai-chat-button" onclick="startAIChat()">
+                        <i class="fas fa-robot"></i>
+                        Chat dengan AI
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -704,7 +740,7 @@
                 <button onclick="attachFile()">
                     <i class="fas fa-paperclip"></i>
                 </button>
-                <button onclick="openAIModal()" class="ai-button">
+                <button onclick="openAIModal()" class="ai-button" id="aiButton" style="display: none;">
                     <i class="fas fa-robot"></i>
                 </button>
             </div>
@@ -749,6 +785,7 @@
         let waitingTimer = null;
         let aiFeature = null;
         let lastMessage = null;
+        let isAIChat = false;
 
         // Generate Random Username
         function generateUsername() {
@@ -765,8 +802,9 @@
             return `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
         }
 
-        // Start Chat
+        // Start Chat with Partner
         function startChat() {
+            isAIChat = false;
             currentUser = {
                 id: Date.now(),
                 username: generateUsername(),
@@ -807,6 +845,7 @@
                     document.getElementById('partnerInfo').style.display = 'flex';
                     document.getElementById('partnerName').textContent = partnerUser.username;
                     document.getElementById('userStatus').textContent = 'Terhubung dengan partner';
+                    document.getElementById('aiButton').style.display = 'flex';
 
                     // Initialize room references
                     messagesRef = database.ref(`rooms/${currentRoomId}/messages`);
@@ -913,6 +952,76 @@
             }, 30000); // 30 seconds timeout
         }
 
+        // Start AI Chat
+        function startAIChat() {
+            isAIChat = true;
+            currentUser = {
+                id: Date.now(),
+                username: generateUsername(),
+                avatar: generateUsername().charAt(0),
+                ip: generateRandomIP(),
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+
+            document.getElementById('username').textContent = currentUser.username;
+            document.getElementById('userAvatar').textContent = currentUser.avatar;
+            document.getElementById('welcomeScreen').style.display = 'none';
+            document.getElementById('partnerInfo').style.display = 'flex';
+            document.getElementById('partnerName').textContent = 'AI Assistant';
+            document.getElementById('userStatus').textContent = 'Terhubung dengan AI';
+            document.getElementById('aiButton').style.display = 'none'; // Hide AI button in AI chat
+
+            // Create AI room
+            currentRoomId = `ai_${currentUser.id}`;
+            messagesRef = database.ref(`ai_rooms/${currentRoomId}/messages`);
+            
+            // Add welcome message from AI
+            const welcomeMessage = {
+                id: Date.now(),
+                text: `Halo ${currentUser.username}! Saya adalah AI Assistant. Ada yang bisa saya bantu?`,
+                senderId: 'ai',
+                senderName: 'AI Assistant',
+                senderAvatar: 'AI',
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: 'ai'
+            };
+            
+            messagesRef.push(welcomeMessage);
+            displayMessage(welcomeMessage);
+
+            // Listen for messages
+            messagesRef.on('child_added', function (msgSnapshot) {
+                const message = msgSnapshot.val();
+                displayMessage(message);
+                
+                // Auto-delete message after 5 minutes for AI chat
+                setTimeout(() => {
+                    msgSnapshot.ref.remove();
+                }, 5 * 60 * 1000);
+            });
+
+            // Listen for message removal
+            messagesRef.on('child_removed', function (msgSnapshot) {
+                const messageId = msgSnapshot.key;
+                const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+                if (messageElement) {
+                    messageElement.style.animation = 'slideOut 0.3s ease-out';
+                    setTimeout(() => {
+                        messageElement.remove();
+                    }, 300);
+                }
+            });
+
+            // Show connected notification
+            Swal.fire({
+                icon: 'success',
+                title: 'Terhubung dengan AI!',
+                text: 'Anda sekarang bisa mengobrol dengan AI Assistant',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        }
+
         // Cancel Waiting
         function cancelWaiting() {
             if (waitingRef && currentUser) {
@@ -950,6 +1059,103 @@
             // Remove typing indicator
             if (typingRef) {
                 typingRef.child(currentUser.id).remove();
+            }
+
+            // If in AI chat, get AI response
+            if (isAIChat) {
+                setTimeout(() => {
+                    getAIResponse(messageText);
+                }, 1000);
+            }
+        }
+
+        // Get AI Response
+        async function getAIResponse(message) {
+            if (!OPENAI_API_KEY || OPENAI_API_KEY === "YOUR_OPENAI_API_KEY") {
+                // Fallback response if no API key
+                const fallbackResponse = {
+                    id: Date.now(),
+                    text: "Maaf, saya tidak dapat merespons saat ini. Silakan coba lagi nanti.",
+                    senderId: 'ai',
+                    senderName: 'AI Assistant',
+                    senderAvatar: 'AI',
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    type: 'ai'
+                };
+                
+                displayMessage(fallbackResponse);
+                messagesRef.push(fallbackResponse);
+                return;
+            }
+
+            // Show loading indicator
+            document.getElementById('aiLoading').style.display = 'flex';
+            
+            try {
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${OPENAI_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-3.5-turbo',
+                        messages: [
+                            {
+                                role: 'system',
+                                content: 'Anda adalah asisten AI yang ramah dan membantu. Jawab pertanyaan dengan singkat dan jelas.'
+                            },
+                            {
+                                role: 'user',
+                                content: message
+                            }
+                        ],
+                        max_tokens: 150
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error.message);
+                }
+                
+                const aiResponse = data.choices[0].message.content.trim();
+                
+                // Hide loading indicator
+                document.getElementById('aiLoading').style.display = 'none';
+                
+                // Display AI response
+                const responseMessage = {
+                    id: Date.now(),
+                    text: aiResponse,
+                    senderId: 'ai',
+                    senderName: 'AI Assistant',
+                    senderAvatar: 'AI',
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    type: 'ai'
+                };
+                
+                displayMessage(responseMessage);
+                messagesRef.push(responseMessage);
+                
+            } catch (error) {
+                // Hide loading indicator
+                document.getElementById('aiLoading').style.display = 'none';
+                
+                // Display error message
+                const errorMessage = {
+                    id: Date.now(),
+                    text: "Maaf, terjadi kesalahan saat memproses permintaan Anda.",
+                    senderId: 'ai',
+                    senderName: 'AI Assistant',
+                    senderAvatar: 'AI',
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    type: 'ai'
+                };
+                
+                displayMessage(errorMessage);
+                messagesRef.push(errorMessage);
             }
         }
 
@@ -1145,6 +1351,8 @@ async function autoReplyAI(message) {
                         • Chat anonim 100%<br>
                         • Hanya untuk 2 orang per sesi<br>
                         • Pesan terhapus otomatis setelah 30 menit<br>
+                        • Chat dengan AI Assistant<br>
+                        • Pesan AI chat terhapus setiap 5 menit<br>
                         • Real-time messaging<br>
                         • Indikator sedang mengetik<br>
                         • AI Assistant untuk tanya jawab<br>
@@ -1197,6 +1405,11 @@ async function autoReplyAI(message) {
                         });
                     }
 
+                    // Delete AI room if exists
+                    if (isAIChat && currentRoomId) {
+                        database.ref(`ai_rooms/${currentRoomId}`).remove();
+                    }
+
                     // Clear timeout if waiting
                     if (waitingTimer) {
                         clearTimeout(waitingTimer);
@@ -1206,6 +1419,7 @@ async function autoReplyAI(message) {
                     currentUser = null;
                     currentRoomId = null;
                     partnerUser = null;
+                    isAIChat = false;
 
                     // Reload page
                     location.reload();
