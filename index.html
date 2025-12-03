@@ -1072,38 +1072,7 @@ async function askAI(question) {
     }
 }
 
-async function autoReplyAI(messageText) {
-    document.getElementById('aiLoading').style.display = 'flex';
-    try {
-        const res = await fetch('/api/autoReplyAI', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: messageText })
-        });
-        const data = await res.json();
-        document.getElementById('aiLoading').style.display = 'none';
-
-        const aiMessage = {
-            id: Date.now(),
-            text: data.reply,
-            senderId: 'ai',
-            senderName: 'AI Assistant',
-            senderAvatar: 'AI',
-            timestamp: firebase.database.ServerValue.TIMESTAMP,
-            type: 'ai'
-        };
-        displayMessage(aiMessage);
-        messagesRef.push(aiMessage);
-        Swal.fire({ icon: 'success', title: 'AI telah membalas', timer: 1500, showConfirmButton: false });
-
-    } catch (err) {
-        document.getElementById('aiLoading').style.display = 'none';
-        Swal.fire({ icon: 'error', title: 'Gagal', text: err.message });
-    }
-}
-
 async function getAIResponse(messageText) {
-    return autoReplyAI(messageText);
 }
 
 // ==================== Display Message ====================
@@ -1156,15 +1125,6 @@ function selectAIFeature(feature) {
     } else if (feature === 'reply') {
         if (!lastMessage) return Swal.fire({ icon: 'info', title: 'Tidak ada pesan', text: 'Tidak ada pesan terakhir yang bisa dibalas', confirmButtonColor: '#667eea' });
 
-        Swal.fire({
-            title: 'Balas Otomatis',
-            text: `AI akan membalas pesan: "${lastMessage}"`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Ya, lanjutkan',
-            cancelButtonText: 'Batal',
-            confirmButtonColor: '#10b981'
-        }).then(result => { if (result.isConfirmed) autoReplyAI(lastMessage); });
     }
 }
 
