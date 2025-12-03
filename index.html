@@ -952,324 +952,224 @@
             }, 30000); // 30 seconds timeout
         }
 
-        // Start AI Chat
-        function startAIChat() {
-            isAIChat = true;
-            currentUser = {
-                id: Date.now(),
-                username: generateUsername(),
-                avatar: generateUsername().charAt(0),
-                ip: generateRandomIP(),
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            };
+ // ==================== Start AI Chat ====================
+function startAIChat() {
+    isAIChat = true;
+    currentUser = {
+        id: Date.now(),
+        username: generateUsername(),
+        avatar: generateUsername().charAt(0),
+        ip: generateRandomIP(),
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    };
 
-            document.getElementById('username').textContent = currentUser.username;
-            document.getElementById('userAvatar').textContent = currentUser.avatar;
-            document.getElementById('welcomeScreen').style.display = 'none';
-            document.getElementById('partnerInfo').style.display = 'flex';
-            document.getElementById('partnerName').textContent = 'AI Assistant';
-            document.getElementById('userStatus').textContent = 'Terhubung dengan AI';
-            document.getElementById('aiButton').style.display = 'none'; // Hide AI button in AI chat
+    document.getElementById('username').textContent = currentUser.username;
+    document.getElementById('userAvatar').textContent = currentUser.avatar;
+    document.getElementById('welcomeScreen').style.display = 'none';
+    document.getElementById('partnerInfo').style.display = 'flex';
+    document.getElementById('partnerName').textContent = 'AI Assistant';
+    document.getElementById('userStatus').textContent = 'Terhubung dengan AI';
+    document.getElementById('aiButton').style.display = 'none';
 
-            // Create AI room
-            currentRoomId = `ai_${currentUser.id}`;
-            messagesRef = database.ref(`ai_rooms/${currentRoomId}/messages`);
-            
-            // Add welcome message from AI
-            const welcomeMessage = {
-                id: Date.now(),
-                text: `Halo ${currentUser.username}! Saya adalah AI Assistant. Ada yang bisa saya bantu?`,
-                senderId: 'ai',
-                senderName: 'AI Assistant',
-                senderAvatar: 'AI',
-                timestamp: firebase.database.ServerValue.TIMESTAMP,
-                type: 'ai'
-            };
-            
-            messagesRef.push(welcomeMessage);
-            displayMessage(welcomeMessage);
+    // Create AI room
+    currentRoomId = `ai_${currentUser.id}`;
+    messagesRef = database.ref(`ai_rooms/${currentRoomId}/messages`);
+    
+    // Add welcome message
+    const welcomeMessage = {
+        id: Date.now(),
+        text: `Halo ${currentUser.username}! Saya adalah AI Assistant. Ada yang bisa saya bantu?`,
+        senderId: 'ai',
+        senderName: 'AI Assistant',
+        senderAvatar: 'AI',
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        type: 'ai'
+    };
+    messagesRef.push(welcomeMessage);
+    displayMessage(welcomeMessage);
 
-            // Listen for messages
-            messagesRef.on('child_added', function (msgSnapshot) {
-                const message = msgSnapshot.val();
-                displayMessage(message);
-                
-                // Auto-delete message after 5 minutes for AI chat
-                setTimeout(() => {
-                    msgSnapshot.ref.remove();
-                }, 5 * 60 * 1000);
-            });
+    // Listen for new messages
+    messagesRef.on('child_added', (msgSnapshot) => {
+        const message = msgSnapshot.val();
+        displayMessage(message);
 
-            // Listen for message removal
-            messagesRef.on('child_removed', function (msgSnapshot) {
-                const messageId = msgSnapshot.key;
-                const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-                if (messageElement) {
-                    messageElement.style.animation = 'slideOut 0.3s ease-out';
-                    setTimeout(() => {
-                        messageElement.remove();
-                    }, 300);
-                }
-            });
+        // Auto-delete after 5 minutes
+        setTimeout(() => {
+            msgSnapshot.ref.remove();
+        }, 5 * 60 * 1000);
+    });
 
-            // Show connected notification
-            Swal.fire({
-                icon: 'success',
-                title: 'Terhubung dengan AI!',
-                text: 'Anda sekarang bisa mengobrol dengan AI Assistant',
-                timer: 2000,
-                showConfirmButton: false
-            });
+    // Listen for removed messages
+    messagesRef.on('child_removed', (msgSnapshot) => {
+        const messageElement = document.querySelector(`[data-message-id="${msgSnapshot.key}"]`);
+        if (messageElement) {
+            messageElement.style.animation = 'slideOut 0.3s ease-out';
+            setTimeout(() => messageElement.remove(), 300);
         }
+    });
 
-        // Cancel Waiting
-        function cancelWaiting() {
-            if (waitingRef && currentUser) {
-                waitingRef.child(currentUser.id).remove();
-            }
-            if (waitingTimer) {
-                clearTimeout(waitingTimer);
-            }
-            document.getElementById('waitingScreen').style.display = 'none';
-            document.getElementById('welcomeScreen').style.display = 'flex';
-        }
+    Swal.fire({
+        icon: 'success',
+        title: 'Terhubung dengan AI!',
+        text: 'Anda sekarang bisa mengobrol dengan AI Assistant',
+        timer: 2000,
+        showConfirmButton: false
+    });
+}
 
-        // Send Message
-        function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const messageText = input.value.trim();
+// ==================== Send Message ====================
+function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const messageText = input.value.trim();
+    if (!messageText || !currentRoomId) return;
 
-            if (messageText === '' || !currentRoomId) {
-                return;
-            }
+    const message = {
+        id: Date.now(),
+        text: messageText,
+        senderId: currentUser.id,
+        senderName: currentUser.username,
+        senderAvatar: currentUser.avatar,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        type: 'text'
+    };
+    messagesRef.push(message);
+    input.value = '';
 
-            const message = {
-                id: Date.now(),
-                text: messageText,
-                senderId: currentUser.id,
-                senderName: currentUser.username,
-                senderAvatar: currentUser.avatar,
-                timestamp: firebase.database.ServerValue.TIMESTAMP,
-                type: 'text'
-            };
+    if (typingRef) typingRef.child(currentUser.id).remove();
 
-            messagesRef.push(message);
-            input.value = '';
+    if (isAIChat) {
+        setTimeout(() => getAIResponse(messageText), 1000);
+    }
+}
 
-            // Remove typing indicator
-            if (typingRef) {
-                typingRef.child(currentUser.id).remove();
-            }
+// ==================== AI Responses ====================
+async function askAI(question) {
+    document.getElementById('aiLoading').style.display = 'flex';
+    try {
+        const res = await fetch('/api/askAI', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question })
+        });
+        const data = await res.json();
+        document.getElementById('aiLoading').style.display = 'none';
 
-            // If in AI chat, get AI response
-            if (isAIChat) {
-                setTimeout(() => {
-                    getAIResponse(messageText);
-                }, 1000);
-            }
-        }
+        const aiMessage = {
+            id: Date.now(),
+            text: data.reply,
+            senderId: 'ai',
+            senderName: 'AI Assistant',
+            senderAvatar: 'AI',
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            type: 'ai'
+        };
+        displayMessage(aiMessage);
+        messagesRef.push(aiMessage);
 
-        // Get AI Response
-        async function getAIResponse(message) {
-            if (!OPENAI_API_KEY || OPENAI_API_KEY === "YOUR_OPENAI_API_KEY") {
-                // Fallback response if no API key
-                const fallbackResponse = {
-                    id: Date.now(),
-                    text: "Maaf, saya tidak dapat merespons saat ini. Silakan coba lagi nanti.",
-                    senderId: 'ai',
-                    senderName: 'AI Assistant',
-                    senderAvatar: 'AI',
-                    timestamp: firebase.database.ServerValue.TIMESTAMP,
-                    type: 'ai'
-                };
-                
-                displayMessage(fallbackResponse);
-                messagesRef.push(fallbackResponse);
-                return;
-            }
+    } catch (err) {
+        document.getElementById('aiLoading').style.display = 'none';
+        Swal.fire({ icon: 'error', title: 'Gagal', text: err.message });
+    }
+}
 
-            // Show loading indicator
-            document.getElementById('aiLoading').style.display = 'flex';
-            
-            try {
-                const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${OPENAI_API_KEY}`
-                    },
-                    body: JSON.stringify({
-                        model: 'gpt-3.5-turbo',
-                        messages: [
-                            {
-                                role: 'system',
-                                content: 'Anda adalah asisten AI yang ramah dan membantu. Jawab pertanyaan dengan singkat dan jelas.'
-                            },
-                            {
-                                role: 'user',
-                                content: message
-                            }
-                        ],
-                        max_tokens: 150
-                    })
-                });
+async function autoReplyAI(messageText) {
+    document.getElementById('aiLoading').style.display = 'flex';
+    try {
+        const res = await fetch('/api/autoReplyAI', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: messageText })
+        });
+        const data = await res.json();
+        document.getElementById('aiLoading').style.display = 'none';
 
-                const data = await response.json();
-                
-                if (data.error) {
-                    throw new Error(data.error.message);
-                }
-                
-                const aiResponse = data.choices[0].message.content.trim();
-                
-                // Hide loading indicator
-                document.getElementById('aiLoading').style.display = 'none';
-                
-                // Display AI response
-                const responseMessage = {
-                    id: Date.now(),
-                    text: aiResponse,
-                    senderId: 'ai',
-                    senderName: 'AI Assistant',
-                    senderAvatar: 'AI',
-                    timestamp: firebase.database.ServerValue.TIMESTAMP,
-                    type: 'ai'
-                };
-                
-                displayMessage(responseMessage);
-                messagesRef.push(responseMessage);
-                
-            } catch (error) {
-                // Hide loading indicator
-                document.getElementById('aiLoading').style.display = 'none';
-                
-                // Display error message
-                const errorMessage = {
-                    id: Date.now(),
-                    text: "Maaf, terjadi kesalahan saat memproses permintaan Anda.",
-                    senderId: 'ai',
-                    senderName: 'AI Assistant',
-                    senderAvatar: 'AI',
-                    timestamp: firebase.database.ServerValue.TIMESTAMP,
-                    type: 'ai'
-                };
-                
-                displayMessage(errorMessage);
-                messagesRef.push(errorMessage);
-            }
-        }
+        const aiMessage = {
+            id: Date.now(),
+            text: data.reply,
+            senderId: 'ai',
+            senderName: 'AI Assistant',
+            senderAvatar: 'AI',
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            type: 'ai'
+        };
+        displayMessage(aiMessage);
+        messagesRef.push(aiMessage);
+        Swal.fire({ icon: 'success', title: 'AI telah membalas', timer: 1500, showConfirmButton: false });
 
-        // Display Message
-        function displayMessage(message) {
-            const messagesContainer = document.getElementById('chatMessages');
-            const messageElement = document.createElement('div');
-            
-            if (message.type === 'ai') {
-                messageElement.className = 'message ai';
-            } else {
-                messageElement.className = `message ${message.senderId === currentUser.id ? 'sent' : 'received'}`;
-            }
-            
-            messageElement.setAttribute('data-message-id', message.id);
+    } catch (err) {
+        document.getElementById('aiLoading').style.display = 'none';
+        Swal.fire({ icon: 'error', title: 'Gagal', text: err.message });
+    }
+}
 
-            const time = new Date(message.timestamp).toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+async function getAIResponse(messageText) {
+    return autoReplyAI(messageText);
+}
 
-            let avatarHtml = '';
-            if (message.type === 'ai') {
-                avatarHtml = '<div class="message-avatar"><i class="fas fa-robot"></i></div>';
-            } else {
-                avatarHtml = `<div class="message-avatar">${message.senderAvatar}</div>`;
-            }
+// ==================== Display Message ====================
+function displayMessage(message) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const messageElement = document.createElement('div');
 
-            let aiIndicator = '';
-            if (message.type === 'ai') {
-                aiIndicator = '<div class="ai-indicator"><i class="fas fa-robot"></i> AI Assistant</div>';
-            }
+    if (message.type === 'ai') messageElement.className = 'message ai';
+    else messageElement.className = `message ${message.senderId === currentUser.id ? 'sent' : 'received'}`;
 
-            messageElement.innerHTML = `
-                ${avatarHtml}
-                <div class="message-content">
-                    <div class="message-bubble">${message.text}</div>
-                    <div class="message-time">${time}</div>
-                    ${aiIndicator}
-                </div>
-            `;
+    messageElement.setAttribute('data-message-id', message.id);
 
-            messagesContainer.insertBefore(messageElement, document.getElementById('typingIndicator'));
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
+    const time = new Date(message.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const avatarHtml = message.type === 'ai'
+        ? '<div class="message-avatar"><i class="fas fa-robot"></i></div>'
+        : `<div class="message-avatar">${message.senderAvatar}</div>`;
+    const aiIndicator = message.type === 'ai' ? '<div class="ai-indicator"><i class="fas fa-robot"></i> AI Assistant</div>' : '';
 
-        // Handle Enter Key
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        }
+    messageElement.innerHTML = `
+        ${avatarHtml}
+        <div class="message-content">
+            <div class="message-bubble">${message.text}</div>
+            <div class="message-time">${time}</div>
+            ${aiIndicator}
+        </div>
+    `;
+    messagesContainer.insertBefore(messageElement, document.getElementById('typingIndicator'));
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
 
-        // Open AI Modal
-        function openAIModal() {
-            document.getElementById('aiModal').style.display = 'flex';
-        }
+// ==================== Modal & AI Feature ====================
+function openAIModal() { document.getElementById('aiModal').style.display = 'flex'; }
+function closeAIModal() { document.getElementById('aiModal').style.display = 'none'; aiFeature = null; }
 
-        // Close AI Modal
-        function closeAIModal() {
-            document.getElementById('aiModal').style.display = 'none';
-            aiFeature = null;
-        }
+function selectAIFeature(feature) {
+    aiFeature = feature;
+    closeAIModal();
 
-        // Select AI Feature
-        function selectAIFeature(feature) {
-            aiFeature = feature;
-            closeAIModal();
-            
-            if (feature === 'ask') {
-                Swal.fire({
-                    title: 'Tanya AI',
-                    input: 'text',
-                    inputPlaceholder: 'Ketik pertanyaan Anda...',
-                    showCancelButton: true,
-                    confirmButtonText: 'Kirim',
-                    cancelButtonText: 'Batal',
-                    confirmButtonColor: '#10b981',
-                    inputValidator: (value) => {
-                        if (!value) {
-                            return 'Silakan ketik pertanyaan Anda!';
-                        }
-                    }
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        askAI(result.value);
-                    }
-                });
-            } else if (feature === 'reply') {
-                if (!lastMessage) {
-                    Swal.fire({
-                        icon: 'info',
-                        title: 'Tidak ada pesan',
-                        text: 'Tidak ada pesan terakhir yang bisa dibalas',
-                        confirmButtonColor: '#667eea'
-                    });
-                    return;
-                }
-                
-                Swal.fire({
-                    title: 'Balas Otomatis',
-                    text: `AI akan membalas pesan: "${lastMessage}"`,
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'Ya, lanjutkan',
-                    cancelButtonText: 'Batal',
-                    confirmButtonColor: '#10b981'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        autoReplyAI(lastMessage);
-                    }
-                });
-            }
-        }
+    if (feature === 'ask') {
+        Swal.fire({
+            title: 'Tanya AI',
+            input: 'text',
+            inputPlaceholder: 'Ketik pertanyaan Anda...',
+            showCancelButton: true,
+            confirmButtonText: 'Kirim',
+            cancelButtonText: 'Batal',
+            confirmButtonColor: '#10b981',
+            inputValidator: (value) => !value && 'Silakan ketik pertanyaan Anda!'
+        }).then(result => { if (result.isConfirmed) askAI(result.value); });
+    } else if (feature === 'reply') {
+        if (!lastMessage) return Swal.fire({ icon: 'info', title: 'Tidak ada pesan', text: 'Tidak ada pesan terakhir yang bisa dibalas', confirmButtonColor: '#667eea' });
+
+        Swal.fire({
+            title: 'Balas Otomatis',
+            text: `AI akan membalas pesan: "${lastMessage}"`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Ya, lanjutkan',
+            cancelButtonText: 'Batal',
+            confirmButtonColor: '#10b981'
+        }).then(result => { if (result.isConfirmed) autoReplyAI(lastMessage); });
+    }
+}
+
+// ==================== Handle Enter ====================
+function handleKeyPress(event) { if (event.key === 'Enter') sendMessage(); }
 
         // ASK AI (frontend)
 async function askAI(question) {
